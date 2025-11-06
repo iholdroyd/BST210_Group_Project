@@ -4,23 +4,24 @@ library(broom)
 library(pROC)
 library(probably)
 
-df2024 <- read_xpt("/Users/ianholdroyd/Downloads/LLCP2024.xpt")
-df2023 <- read_xpt("/Users/ianholdroyd/Downloads/LLCP2023.xpt")
-df2022 <- read_xpt("/Users/ianholdroyd/Downloads/LLCP2022.xpt")
+#pulling together the different datasets from the years
+df2024 <- read_xpt("data/LLCP2024.xpt")
+df2023 <- read_xpt("data/LLCP2023.xpt")
+df2022 <- read_xpt("data/LLCP2022.xpt")
 
 df <- bind_rows(df2023, df2022)
 df1 <- bind_rows(df, df2024)
 df2_backupdf1 <- df1
 df1<-df2_backupdf1
 
+#this gets the ace columns in a list which is helpful for later on
 ace_cols <- grep("^ACE", names(df1), value = TRUE)
 
 
-# chosen the more combined for income and race
-# do we need to categorise the types of insurance or just keep them all as seperate
+# extracting the columns that I wan't, and renaming them to something more intuiative
 
 cols_to_get <-c("_STATE", "IMONTH", "IYEAR", "DISPCODE", "SEXVAR", "EDUCA", "MARITAL",
-                "_METSTAT", "_URBSTAT", "_RACEGR3", "_LLCPWT", "_AGEG5YR","_INCOMG1", 
+                "_METSTAT", "_URBSTAT", "_IMPRACE", "_LLCPWT", "_AGEG5YR","_INCOMG1", 
                 "PRIMINS1", "HPVADVC4", "HPVADSHT", 
                 ace_cols)
 
@@ -34,7 +35,7 @@ df1<- df1|>
   rename(setNames(cols_to_get, new_name_cols))
 
 
-
+# this bit is renaming the data within the file to 1. remove any number codes that actually mean NA, and also to change arouind the ACE columns so that they all mean the same thing
 df1.mutatedvars <- df1 |>
   mutate(
     across(c(ace_cols, hpv_ever_had, race, marital), ~ ifelse(.x %in% c(7, 8, 9), NA, .x)),
@@ -63,37 +64,62 @@ df1.mutatedvars <- df1 |>
   )
 
 
+#gets covariates as discrete variables if this is appropriate
 df1.mutatedvars<- df1.mutatedvars |> mutate(
   across(c(race, state, marital, insurance, age, income, edu), ~ as.character(.x)),
 )
 
 
-# df11 <- df12 |>filter(if_all(all_of(ace_cols), ~ !is.na(.x)))
-
+#  regression without confounders 
 mod1 <- glm(data = df1.mutatedvars, formula(hpv_ever_had ~ ACEANY ), family = binomial(link="logit"))
 summary(mod1)
 exp(mod1$coefficients)
 
-
-summary(df1.mutatedvars)
 
 # these tables show that there were only a handful of states that recorded information on ACEs and whether someone had had HPV vaccinaiton
 table(df1.mutatedvars$hpv_ever_had, df1.mutatedvars$state)
 table(df1.mutatedvars$ACEANY, df1.mutatedvars$state)
 
 
+# makes a dataframe using only the rows that have complete data for all the points. this helps for making the ROC later
 analysis_df.mod2 <- df1.mutatedvars[complete.cases(df1.mutatedvars[, c(
   "hpv_ever_had", "ACEANY", "state", "urban", "metropolitan",
   "i_year", "sex", "edu", "income", "race"
 )]),
 ]
 
-analysis_df.mod2$edu
+#looking at the variables
+table(analysis_df.mod2$edu)
+table(analysis_df.mod2$hpv_ever_had)
+table(analysis_df.mod2$ACEANY)
+table(analysis_df.mod2$state)
+table(analysis_df.mod2$urban)
+table(analysis_df.mod2$metropolitan)
+table(analysis_df.mod2$i_year)
+table(analysis_df.mod2$sex)
+table(analysis_df.mod2$income)
+table(analysis_df.mod2$race)
 
-summary(analysis_df.mod2$edu)
-mod2 <- glm(data = analysis_df.mod2, formula(hpv_ever_had ~ ACEANY + state + urban + metropolitan + i_year*sex + edu+ income+race), family = binomial(link="logit"))
+# there's only 6 people who never attended school. This is going to result in silly standard errors using this as the reference to compare to. 
+# I've reclassified into 1. didn't complete high school education, high school education, college education, and graduate college education
+analysis_df.mod2<- analysis_df.mod2 |>
+  mutate(
+    edu = case_when(
+      edu %in% c("1", "2", "3") ~ "less than high school",
+      edu == 4 ~ "high school",
+      edu == 5 ~ "college",
+      edu == 6 ~ "graduate"
+    )
+  )
+
+analysis_df.mod2$income <- relevel(factor(analysis_df.mod2$income), ref = "4")
+
+
+mod2 <- glm(data = analysis_df.mod2, formula(hpv_ever_had ~ ACEANY + state + urban + metropolitan + i_year *sex + edu+ income+race), family = binomial(link="logit"))
 summary(mod2)
-exp(mod2$coefficients)
+library(car)
+vif(mod2)
+mod2results <- tidy(mod2, exponentiate = TRUE, conf.int = TRUE)
 
 
 plot.roc(x = mod2$y,
@@ -128,6 +154,21 @@ plot_calibration <- function(model, n_bins = 10, title = "Calibration Curve") {
 }
 
 plot_calibration(mod2)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 results <- list()
