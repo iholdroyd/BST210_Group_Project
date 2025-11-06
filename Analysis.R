@@ -9,20 +9,27 @@ df2024 <- read_xpt("data/LLCP2024.xpt")
 df2023 <- read_xpt("data/LLCP2023.xpt")
 df2022 <- read_xpt("data/LLCP2022.xpt")
 
+df2024$HLTHPL <- df2024$'_HLTHPL2'
+df2023$HLTHPL <- df2023$'_HLTHPL1'
+df2022$HLTHPL <- df2022$`_HLTHPLN`
+
+
 df <- bind_rows(df2023, df2022)
 df1 <- bind_rows(df, df2024)
 df2_backupdf1 <- df1
 df1<-df2_backupdf1
 
+df$HLTHPL
+
+
 #this gets the ace columns in a list which is helpful for later on
 ace_cols <- grep("^ACE", names(df1), value = TRUE)
-
 
 # extracting the columns that I wan't, and renaming them to something more intuiative
 
 cols_to_get <-c("_STATE", "IMONTH", "IYEAR", "DISPCODE", "SEXVAR", "EDUCA", "MARITAL",
                 "_METSTAT", "_URBSTAT", "_IMPRACE", "_LLCPWT", "_AGEG5YR","_INCOMG1", 
-                "PRIMINS1", "HPVADVC4", "HPVADSHT", 
+                "HLTHPL", "HPVADVC4", "HPVADSHT", 
                 ace_cols)
 
 new_name_cols <- c("state", "i_month", "i_year", "id", "sex", "edu", "marital",
@@ -34,11 +41,11 @@ df1<- df1[cols_to_get]
 df1<- df1|>
   rename(setNames(cols_to_get, new_name_cols))
 
-
 # this bit is renaming the data within the file to 1. remove any number codes that actually mean NA, and also to change arouind the ACE columns so that they all mean the same thing
 df1.mutatedvars <- df1 |>
   mutate(
-    across(c(ace_cols, hpv_ever_had, race, marital), ~ ifelse(.x %in% c(7, 8, 9), NA, .x)),
+    across(c(ace_cols, insurance, hpv_ever_had, race, marital), ~ ifelse(.x %in% c(7, 8, 9), NA, .x)),
+    across(c(hpv_numberofshots), ~ ifelse(.x %in% c(77, 99), NA, .x)),
     across(c(age), ~ ifelse(.x %in% c(14), NA, .x)),
     across(c(income, edu), ~ ifelse(.x %in% c(9), NA, .x)),
     across(c(hpv_numberofshots), ~ifelse(.x%in% c(4, 10, 77, 99), NA, .x)),
@@ -49,13 +56,13 @@ df1.mutatedvars <- df1 |>
         NA
       )
     ),
-    across(c(ACEDEPRS, ACEDRINK, ACEDRUGS, ACEPRISN, ACEDIVRC),
+    across(c(ACEDEPRS, ACEDRINK, ACEDRUGS, ACEPRISN, ACEDIVRC, insurance),
            ~ ifelse(.x == 1, "Yes", ifelse(.x == 2, "No", .x))),
-    across(c(hpv_ever_had), ~ifelse(.x == 1, 1, ifelse(is.na(.x), NA, 0))),
+    across(c(hpv_ever_had), ~ifelse(.x == 1, 1, ifelse((.x %in% c(NA, 3)), NA, 0))),
     across(c(ACEPUNCH, ACEHURT1, ACESWEAR, ACETOUCH, ACETTHEM, ACEHVSEX),
            ~ ifelse(.x > 1, "Yes", ifelse(.x == 1, "No", .x))),
     across(c(ACEADNED, ACEADSAF),
-           ~ ifelse(.x > 3, "No", ifelse(.x < 4, "Yes", .x))),
+           ~ ifelse(.x > 2, "No", ifelse(.x < 3, "Yes", .x))),
     ACEANY = case_when(
       if_any(all_of(ace_cols), ~ .x == "Yes") ~ "Yes",
       if_all(all_of(ace_cols), ~ .x == "No") ~ "No",
@@ -63,6 +70,7 @@ df1.mutatedvars <- df1 |>
     )
   )
 
+table(df1.mutatedvars$insurance)
 
 #gets covariates as discrete variables if this is appropriate
 df1.mutatedvars<- df1.mutatedvars |> mutate(
@@ -83,7 +91,7 @@ table(df1.mutatedvars$ACEANY, df1.mutatedvars$state)
 
 # makes a dataframe using only the rows that have complete data for all the points. this helps for making the ROC later
 analysis_df.mod2 <- df1.mutatedvars[complete.cases(df1.mutatedvars[, c(
-  "hpv_ever_had", "ACEANY", "state", "urban", "metropolitan",
+  "hpv_ever_had", "ACEANY", "state", "urban", "metropolitan", "insurance",
   "i_year", "sex", "edu", "income", "race"
 )]),
 ]
@@ -98,6 +106,7 @@ table(analysis_df.mod2$metropolitan)
 table(analysis_df.mod2$i_year)
 table(analysis_df.mod2$sex)
 table(analysis_df.mod2$income)
+table(analysis_df.mod2$insurance)
 table(analysis_df.mod2$race)
 
 # there's only 6 people who never attended school. This is going to result in silly standard errors using this as the reference to compare to. 
@@ -112,16 +121,23 @@ analysis_df.mod2<- analysis_df.mod2 |>
     )
   )
 
+
+
+#relevel so that income of 4 is set as the reference
 analysis_df.mod2$income <- relevel(factor(analysis_df.mod2$income), ref = "4")
 
 
-mod2 <- glm(data = analysis_df.mod2, formula(hpv_ever_had ~ ACEANY + state + urban + metropolitan + i_year *sex + edu+ income+race), family = binomial(link="logit"))
+#model using all the covariates
+mod2 <- glm(data = analysis_df.mod2, formula(hpv_ever_had ~ ACEANY + state + urban + metropolitan + insurance + i_year *sex + edu+ income+race), family = binomial(link="logit"))
 summary(mod2)
 library(car)
 vif(mod2)
 mod2results <- tidy(mod2, exponentiate = TRUE, conf.int = TRUE)
+colnames(mod2results)<- c("Term","OR", "SE", "Test Statistic", "P Value", "Lower Bound", "Upper Bound")
 
 
+
+# this bit just gets an ROC curve and the auc
 plot.roc(x = mod2$y,
          predictor = mod2$fitted.values)
 auc(response = mod2$y,
@@ -160,20 +176,13 @@ plot_calibration(mod2)
 
 
 
-
-
-
-
-
-
-
-
-
-
-
+#work through to get the effects of each different form of ace
 results <- list()
 
 
+
+
+# this last bit of code assesses the effect of each of the ACE variables independantly 
 ace_cols.updated <- ace_cols[!ace_cols %in% c("ACETTHEM", "ACEHVSEX", "ACETOUCH")]
 ace_cols.updated <- c(ace_cols.updated, "ACESEXCOMBINED")
 
