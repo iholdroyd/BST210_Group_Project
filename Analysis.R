@@ -5,9 +5,9 @@ library(pROC)
 library(probably)
 
 #pulling together the different datasets from the years
-df2024 <- read_xpt("data/LLCP2024.xpt")
-df2023 <- read_xpt("data/LLCP2023.xpt")
-df2022 <- read_xpt("data/LLCP2022.xpt")
+df2024 <- read_xpt("/Users/ianholdroyd/Downloads/LLCP2024.xpt")
+df2023 <- read_xpt("/Users/ianholdroyd/Downloads/LLCP2023.xpt")
+df2022 <- read_xpt("/Users/ianholdroyd/Downloads/LLCP2022.xpt")
 
 df2024$HLTHPL <- df2024$'_HLTHPL2'
 df2023$HLTHPL <- df2023$'_HLTHPL1'
