@@ -29,12 +29,12 @@ ace_cols <- grep("^ACE", names(df1), value = TRUE)
 
 cols_to_get <-c("_STATE", "IMONTH", "IYEAR", "DISPCODE", "SEXVAR", "EDUCA", "MARITAL",
                 "_METSTAT", "_URBSTAT", "_IMPRACE", "_LLCPWT", "_AGEG5YR","_INCOMG1", 
-                "HLTHPL", "HPVADVC4", "HPVADSHT", 
+                "HLTHPL", "HPVADVC4", "HPVADSHT", "TETANUS1", "_PSU", "_STSTR",
                 ace_cols)
 
 new_name_cols <- c("state", "i_month", "i_year", "id", "sex", "edu", "marital",
                    "metropolitan", "urban", "race", "weight_survey", "age","income",
-                   "insurance", "hpv_ever_had", "hpv_numberofshots",
+                   "insurance", "hpv_ever_had", "hpv_numberofshots", "tetanus", "psu", "strata",
                    ace_cols)
 
 df1<- df1[cols_to_get]
@@ -79,7 +79,7 @@ df1.mutatedvars<- df1.mutatedvars |> mutate(
 
 
 #  regression without confounders 
-mod1 <- glm(data = df1.mutatedvars, formula(hpv_ever_had ~ ACEANY ), family = binomial(link="logit"))
+mod1 <- glm(data = df1.mutatedvars, formula(hpv_ever_had ~ ACEANY ), family = binomial(link="logit"), weights = weight_survey)
 summary(mod1)
 exp(mod1$coefficients)
 
@@ -108,6 +108,8 @@ table(analysis_df.mod2$sex)
 table(analysis_df.mod2$income)
 table(analysis_df.mod2$insurance)
 table(analysis_df.mod2$race)
+table(is.na(analysis_df.mod2$weight_survey), analysis_df.mod2$i_year)
+
 
 # there's only 6 people who never attended school. This is going to result in silly standard errors using this as the reference to compare to. 
 # I've reclassified into 1. didn't complete high school education, high school education, college education, and graduate college education
@@ -126,9 +128,20 @@ analysis_df.mod2<- analysis_df.mod2 |>
 #relevel so that income of 4 is set as the reference
 analysis_df.mod2$income <- relevel(factor(analysis_df.mod2$income), ref = "4")
 
+table(analysis_df.mod2$tetanus)
+
+analysis_df.mod2 <- analysis_df.mod2 |>
+  mutate(
+    tetanus1 = case_when(
+      tetanus < 4 ~ 1,
+      tetanus == 4 ~ 0,
+      tetanus %in% c(7, 9) | is.na(tetanus) ~ NA_real_
+    )
+  )
+
 
 #model using all the covariates
-mod2 <- glm(data = analysis_df.mod2, formula(hpv_ever_had ~ ACEANY + state + urban + metropolitan + insurance + i_year *sex + edu+ income+race), family = binomial(link="logit"))
+mod2 <- glm(data = analysis_df.mod2, formula(hpv_ever_had ~ ACEANY + state + urban + metropolitan + insurance + i_year *sex + edu+ income+race), family=binomial(link="logit"))
 summary(mod2)
 library(car)
 vif(mod2)
@@ -191,7 +204,7 @@ for (v in ace_cols.updated) {
   form <- as.formula(paste0("hpv_ever_had ~ ", v, 
                             " + state + urban + metropolitan + i_year*sex + edu + income + race"))
   
-  mod2 <- glm(data = df1.mutatedvars, formula = form, family = binomial(link = "logit"))
+  mod2 <- glm(data = df1.mutatedvars, formula = form, family = binomial(link = "logit"), weights = weight_survey)
   
   results[[v]] <- list(
     tidy(mod2, conf.int = TRUE, exponentiate = TRUE)[2,]
@@ -200,4 +213,4 @@ for (v in ace_cols.updated) {
 
 
 results
-
+table(analysis_df.mod2$age)
