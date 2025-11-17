@@ -132,13 +132,14 @@ table(analysis_df.mod2$tetanus)
 
 analysis_df.mod2 <- analysis_df.mod2 |>
   mutate(
-    tetanus1 = case_when(
+    tetanus = case_when(
       tetanus < 4 ~ 1,
       tetanus == 4 ~ 0,
       tetanus %in% c(7, 9) | is.na(tetanus) ~ NA_real_
     )
   )
 
+table(analysis_df.mod2$hpv_numberofshots)
 
 #model using all the covariates
 mod2 <- glm(data = analysis_df.mod2, formula(hpv_ever_had ~ ACEANY + state + urban + metropolitan + insurance + i_year *sex + edu+ income+race), family=binomial(link="logit"))
