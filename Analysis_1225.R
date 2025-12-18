@@ -148,25 +148,25 @@ acena_subset <- df1.mutatedvars |>
   mutate(ACEANY_missing = if_else(is.na(ACEANY), "ACEANY is NA", "ACEANY not NA"))
   
 
-library(tableone)
-continuous_vars <- c("hpv_ever_had", "sex", "hpv_numberofshots")
-string_vars <- c("race", "state", "marital", "insurance", "age", "income", "edu")
-vars <- c(continuous_vars, string_vars)
-group <- "ACEANY_missing"
-tab1 <- CreateTableOne(
-  vars = vars,
-  strata = group,
-  data = acena_subset,
-  factorVars = string_vars,
-  includeNA = TRUE
-)
-tab1
+# library(tableone)
+# continuous_vars <- c("hpv_ever_had", "sex", "hpv_numberofshots")
+# string_vars <- c("race", "state", "marital", "insurance", "age", "income", "edu")
+# vars <- c(continuous_vars, string_vars)
+# group <- "ACEANY_missing"
+# tab1 <- CreateTableOne(
+#   vars = vars,
+#   strata = group,
+#   data = acena_subset,
+#   factorVars = string_vars,
+#   includeNA = TRUE
+# )
+# tab1
 
 
 
 # makes a dataframe using only the rows that have complete data for all the points. this helps for making the ROC later
 analysis_df.mod2 <- df1.mutatedvars[complete.cases(df1.mutatedvars[, c(
-  "hpv_ever_had", "ACEANY", "state", "urban", "metropolitan", "insurance",
+  "hpv_ever_had", "ACEANY", "state", "metropolitan", "insurance",
   "i_year", "sex", "edu", "income", "race"
 )]),
 ]
@@ -185,6 +185,21 @@ analysis_df.mod2 <- df1.mutatedvars[complete.cases(df1.mutatedvars[, c(
 # table(analysis_df.mod2$race)
 # table(is.na(analysis_df.mod2$weight_survey), analysis_df.mod2$i_year)
 
+
+
+
+analysis_df.mod2 <- analysis_df.mod2 |>
+  mutate(
+    urban = case_when(
+      urban == 1 ~ "urban",
+      TRUE ~ "rural"
+    ),
+    metropolitan = case_when(
+      metropolitan == 1 ~ "metropolitan",
+      TRUE ~ "non-metropolitan"
+    )
+  )
+table(analysis_df.mod2$urban, analysis_df.mod2$metropolitan)
 
 # there's only 6 people who never attended school. This is going to result in silly standard errors using this as the reference to compare to. 
 # I've reclassified into 1. didn't complete high school education, high school education, college education, and graduate college education
@@ -216,7 +231,7 @@ design_mod2 <- analysis_df.mod2 |>
   )
 
 #model using all the covariates (use syrvey weighted glm)
-mod2 <- svyglm(hpv_ever_had ~ ACEANY + state + urban + metropolitan + insurance + i_year *sex + edu+ income+race, 
+mod2 <- svyglm(hpv_ever_had ~ ACEANY + state + metropolitan + insurance + i_year *sex + edu+ income+race, 
       design = design_mod2, family=quasibinomial()
 )
 summary(mod2)
@@ -278,11 +293,11 @@ ace_results_df <- map_dfr(
   ~ {
     form <- as.formula(
       paste0("hpv_ever_had ~ ", .x,
-             " + state + urban + metropolitan + insurance + i_year*sex + edu + income + race")
+             " + state + metropolitan + insurance + i_year*sex + edu + income + race")
     )
     
     analysis_df.mod3 <- df1.mutatedvars[complete.cases(df1.mutatedvars[, c(
-      "hpv_ever_had", .x, "state", "urban", "metropolitan", "insurance",
+      "hpv_ever_had", .x, "state", "metropolitan", "insurance",
       "i_year", "sex", "edu", "income", "race"
     )]),
     ]
@@ -313,11 +328,11 @@ ace_results_df_sensitivity_analysis_age <- map_dfr(
   ~ {
     form <- as.formula(
       paste0("hpv_ever_had ~ ", .x,
-             " + state + urban + metropolitan + insurance + i_year*sex + edu + income + race")
+             " + state + metropolitan + insurance + i_year*sex + edu + income + race")
     )
     
     analysis_df.mod3 <- df1.mutatedvars.sensitivity_analysis[complete.cases(df1.mutatedvars.sensitivity_analysis[, c(
-      "hpv_ever_had", .x, "state", "urban", "metropolitan", "insurance",
+      "hpv_ever_had", .x, "state", "metropolitan", "insurance",
       "i_year", "sex", "edu", "income", "race"
     )]),
     ]
